@@ -1,6 +1,6 @@
 """Air wings: each country's air wings, where they are based and the mission they fly.
 
-AirLog(path, names, tags, others).step(date, lines) writes to air.tsv:
+AirLog(path, names, tags, others).step(date, lines) writes air_regions.tsv (see _regions) and, to air.tsv:
   date  change  country  wing  name  base  state  equipment  planes  mission  region  period  experience  was
 wing the wing's id (handle 69), base the air base it sits at (handle 65 id) and state that base's state, equipment
 the plane design (handle 70 id), planes how many it has, mission none / air_superiority / cas / interception /
@@ -44,6 +44,7 @@ from hoi4bridge import send
 
 FULL_DAYS = 7
 WING, BASE = 69, 65
+REGION_HEADER = "date\tcountry\tregion\tmission\twings\tplanes\teffective\tair_superiority\tlost"
 HEADER = ("date\tchange\tcountry\twing\tname\tbase\tstate\tequipment\tplanes\tmission\tregion\tperiod\texperience"
           "\twas")
 FIELDS = ("name", "base", "state", "equipment", "planes", "mission", "region", "period", "experience")
@@ -124,6 +125,12 @@ class AirLog:
         self.f = open(path, "a", encoding="utf-8")
         if new:
             self.f.write(HEADER + "\n")
+        rpath = os.path.join(os.path.dirname(path), "air_regions.tsv")
+        new = not os.path.exists(rpath)
+        self.fr = open(rpath, "a", encoding="utf-8")
+        if new:
+            self.fr.write(REGION_HEADER + "\n")
+        self.regions = {}           # tag -> {(region, mission): (wings, planes, effective, air_superiority)}
 
     def _bases(self, ids):
         """{wing id: air base id} of wings IDS."""
@@ -177,8 +184,42 @@ class AirLog:
                     "planes": _get(text, "count"), "mission": mission(_get(mis, "type") or 0),
                     "region": _get(mis, "strategic_region"),
                     "period": PERIODS[int(per)] if per.isdigit() and int(per) < len(PERIODS) else per,
-                    "experience": _get(text, "experience")}
+                    "experience": _get(text, "experience"),
+                    "active": _get(mis, "active"), "executing": _get(mis, "executing_mission"),
+                    "effective": _get(mis, "effective_planes_count"),
+                    "air_superiority": _get(mis, "effective_air_superiority")}
         return found
+
+    def _regions(self, date, tag, now, last):
+        """Writes the rows of air_regions.tsv for TAG: per strategic region and mission the wings, planes, effective
+        planes and air superiority of its wings that are on a mission, with `lost` = the planes the wings that were
+        there at the last read have lost since (only drops; reinforcement hides some). A row is written when
+        anything but the plane count of a group changed, or planes were lost."""
+        lost = {}
+        for i, v in now.items():
+            o = (last or {}).get(i)
+            if o and o["planes"].isdigit() and v["planes"].isdigit() and int(o["planes"]) > int(v["planes"]):
+                k = (o["region"], o["executing"] if o["active"] == "yes" else "none")
+                lost[k] = lost.get(k, 0) + int(o["planes"]) - int(v["planes"])
+        groups = {}
+        for v in now.values():
+            if not v["region"]:
+                continue
+            k = (v["region"], v["executing"] if v["active"] == "yes" else "none")
+            g = groups.setdefault(k, [0, 0, 0, 0.0])
+            g[0] += 1
+            g[1] += int(v["planes"] or 0)
+            g[2] += int(v["effective"] or 0)
+            g[3] = round(g[3] + float(v["air_superiority"] or 0), 1)
+        old = self.regions.get(tag, {})
+        n = 0
+        for k in sorted(set(groups) | set(old) | set(lost)):
+            g = tuple(groups.get(k, (0, 0, 0, 0)))
+            if g != old.get(k) or lost.get(k):
+                self.fr.write("\t".join((date, tag, k[0], k[1]) + tuple(map(str, g)) + (str(lost.get(k, 0)),)) + "\n")
+                n += 1
+        self.regions[tag] = {k: tuple(g) for k, g in groups.items()}
+        return n
 
     def step(self, date, lines=()):
         """DATE as for ProductionLog.step. Returns the rows written."""
@@ -218,12 +259,16 @@ class AirLog:
                 for i, v in sorted((last or {}).items()):
                     if i not in now:
                         rows.append(("removed", tag, str(i)) + tuple(v[f] for f in FIELDS) + ("",))
+                if last is not None or not self.started:
+                    self._regions(date, tag, now, last)
                 self.held[tag] = now
         self.started = True
         for row in rows:
             self.f.write("\t".join((date,) + row) + "\n")
         self.f.flush()
+        self.fr.flush()
         return len(rows)
 
     def close(self):
         self.f.close()
+        self.fr.close()

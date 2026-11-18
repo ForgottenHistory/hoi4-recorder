@@ -291,6 +291,17 @@ an air command on its wings: `CStratAirSetMissionCommand` (wings +0x28, mission 
 wings of the listed ones are written to the record by `airrec.install_rules()` (`bridge.cmdrec list`). Needs a bridge
 with `bridge.write`. `--no-air` turns it off.
 
+`air_regions.tsv` (same recorder, next to `air.tsv`): per country, strategic region and mission, the wings, planes,
+effective planes and summed air superiority, written at the first read and whenever a group changes. date, country,
+region, mission (the wing's executing mission when it is active, else `none`), wings, planes, effective,
+air_superiority, lost. The air zone panel's per-side plane totals are not stored in the game; they are these sums of
+wings by (tag, strategic_region, active), and they match the panel exactly (checked live: GER 1197, ENG 678).
+`lost` is only a LOWER BOUND: the sum of per-wing plane drops since the last read. Reinforcement refills wings from
+the stockpile, so a reinforced side hides most of its losses (live test: 2 counted against 23 real for GER; the
+unreinforced ENG came out close). The panel's own loss counters (fighters/bombers/CAS lost, bombed, trains lost; Days
+30 / Months 12 / Years 5 history views) were searched for in memory as int and float arrays (CAirRegionCombatData
+holds per-wing pairs, not stats) and NOT found, so they are not recorded.
+
 Navies (`hoi4ai/navalrec.py`): `naval.tsv` gets each country's task forces at its first read and then each change:
 date, change (`start`, `new`, `changed`, `removed`), country, task_force (`51:ID` for the starting ones, `61:ID` for ones made by splitting or balancing), name, fleet (handle 61 id and
 name), ships (count per ship type, e.g. `destroyer:4,heavy_cruiser:2`), mission (`hold`, `patrol`, `strike_force`,

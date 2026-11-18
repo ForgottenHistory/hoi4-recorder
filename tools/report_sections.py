@@ -313,9 +313,40 @@ def sections(rec, tag, d0, d1, wars):
     h, air = rows_of(rec, "air", country=tag)
     if air:
         by = replay(air, h, ["wing"], lambda st: Counter({"planes": sum(int(r["planes"] or 0) for r in st.values()), "wings": len(st)}))
-        out.append(("Air force", "<p>Planes and wings, replayed from air.tsv.</p><h3>Planes</h3>" +
-                    chart(stack_series(by, ["planes"], d0, d1), d0, d1, wars, height=170) +
-                    "<h3>Wings</h3>" + chart(stack_series(by, ["wings"], d0, d1), d0, d1, wars, height=130)))
+        def by_mission(state):
+            c = Counter()
+            for r in state.values():
+                c[(r["mission"] or "none").replace("_", " ")] += int(r["planes"] or 0)
+            return c
+        miss = replay(air, h, ["wing"], by_mission)
+        final = {}
+        for r in air:
+            k = r[h.index("wing")]
+            if r[h.index("change")] == "removed":
+                final.pop(k, None)
+            else:
+                final[k] = dict(zip(h, r))
+        best = sorted(final.values(), key=lambda r: -float(r["experience"] or 0))[:12]
+        html = ("<p>Planes and wings, replayed from air.tsv.</p><h3>Planes</h3>" +
+                chart(stack_series(by, ["planes"], d0, d1), d0, d1, wars, height=170) +
+                "<h3>Wings</h3>" + chart(stack_series(by, ["wings"], d0, d1), d0, d1, wars, height=130) +
+                "<h3>Planes by mission</h3>" + chart(stack_series(miss, top_names(miss), d0, d1), d0, d1, wars, stacked=True, height=170) +
+                "<h3>Most experienced wings at the end</h3>" +
+                table(["wing", "planes", "mission", "region", "experience"],
+                      [[r["name"], r["planes"], (r["mission"] or "none").replace("_", " "), r["region"], r["experience"]] for r in best]))
+        rh, reg = rows_of(rec, "air_regions", country=tag)
+        if reg:
+            ri = {c: i for i, c in enumerate(rh)}
+            last = {}
+            for r in reg:
+                last[(r[ri["region"]], r[ri["mission"]])] = r
+            rows = sorted(last.values(), key=lambda r: -int(r[ri["planes"]] or 0))[:20]
+            html += ("<h3>Strength per air region at the end</h3><p>From air_regions.tsv: wings by strategic region and mission. "
+                     "The lost column counts plane drops seen between readings, so it is a lower bound (reinforcement refills wings).</p>" +
+                     table(["region", "mission", "wings", "planes", "effective", "air superiority", "lost (seen)"],
+                           [[r[ri["region"]], r[ri["mission"]].replace("_", " "), r[ri["wings"]], r[ri["planes"]], r[ri["effective"]],
+                             r[ri["air_superiority"]], r[ri["lost"]]] for r in rows]))
+        out.append(("Air force", html))
 
     h, gen = rows_of(rec, "generals", country=tag)
     if gen:
@@ -355,6 +386,8 @@ def sections(rec, tag, d0, d1, wars):
             mine = [r for r in deals if r[ix[col]] == tag]
             if mine:
                 by = replay(mine, h, ["deal"], amount)
+                if not top_names(by):
+                    continue
                 body += f"<h3>{title}</h3>" + chart(stack_series(by, top_names(by), d0, d1), d0, d1, wars, stacked=True, height=170)
         sellers = Counter(r[ix["exporter"]] for r in deals if r[ix["importer"]] == tag and r[ix["change"]] == "new")
         body += "<h3>Most deals bought from</h3>" + table(["exporter", "deals"], [(nm(k), n) for k, n in sellers.most_common(8)])
