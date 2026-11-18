@@ -321,7 +321,9 @@ last column `name` (`airlosses.NAMES`) says which. Unseen channels (transports, 
 missiles; always 0 so far) sit in the gaps and are unnamed; decode them the same way when a game makes them nonzero. So fighters over a region: air battle = column 4,
 accidents = 6, total = 3 (= 4 + 5 + 6); `newest` of the days view is that day's count. Checked against the panel
 (GER 60 battle + 8 accident, ENG 251, over Southern England 5/4/1 and bombers 35 = 17+16+2) and against the save's
-`strategic_air/TAG/history/REGION` blocks (`tools/air_losses.py SAVE [TAG]` prints those for any plaintext save).
+`strategic_air/TAG/history/REGION` blocks. The open panel lags memory by some hours and only refreshes when reopened (e.g.
+bombers 74 on the panel against 80 in memory, air battle exact at 26, AA 43 against 49), so compare after reopening it
+and expect memory to be equal or slightly ahead. Bomber order confirmed on 12 Oct 1939 (air battle c11, AA c12) (`tools/air_losses.py SAVE [TAG]` prints those for any plaintext save).
 Memory chain: holder with vtable 0x...5148 (CStrategicAir's secondary vtable, found from RTTI) country id +0x88,
 region count +0x140, region-indexed array +0x150 -> CLoopHistory (containers +0x10 days / +0x18 months / +0x20 years;
 container +0x08 pointer to slot pointers, +0x10 slot count, +0x24 ring offset) -> vector of 89 int64.

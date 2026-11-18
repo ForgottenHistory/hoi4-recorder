@@ -7,7 +7,7 @@ columns (a ring buffer; the 'offset' above it is the write position). Verified o
 col 3 = fighters lost in total (68), col 4 = shot down in air battle (60), col 6 = accident losses (8); cols 44/45
 mirror the enemy's col 4 (the enemy fighters we shot down). Other columns belong to other channels (bombers, CAS...).
 Channels are 7 columns wide: fighters c3 (total) c4 (air battle) c5 (AA) c6 (accident); tactical bombers c10-c13;
-CAS c17-c20 (same order; bomber air-vs-AA order verified only approximately). c39 = bombers disrupted, c44/c45 = enemy
+CAS c17-c20 (same order; bomber order verified 12 Oct 1939: panel 26 air battle / 43 AA / 5 accident vs memory 26 / 49 / 5). c39 = bombers disrupted, c44/c45 = enemy
 fighters lost. Verified against the panel over Southern England (region 1), 5 Oct 1939 save.
 Prints, per country and region, the 30-day sum of every non-zero column (--days: the per-day values too).
 """
