@@ -299,8 +299,8 @@ wings by (tag, strategic_region, active), and they match the panel exactly (chec
 `lost` is only a LOWER BOUND: the sum of per-wing plane drops since the last read. Reinforcement refills wings from
 the stockpile, so a reinforced side hides most of its losses (live test: 2 counted against 23 real for GER; the
 unreinforced ENG came out close). The panel's own loss counters (fighters/bombers/CAS lost, bombed, trains lost; Days
-30 / Months 12 / Years 5 history views) were searched for in memory as int and float arrays (CAirRegionCombatData
-holds per-wing pairs, not stats) and NOT found, so they are not recorded.
+30 / Months 12 / Years 5 history views) are NOT in CAirRegionCombatData (per-wing pairs). Value scans failed because
+they are int64 fixed point (x100000) in a ring of per-day vectors; found via RTTI (see `air_losses.tsv` below).
 
 `air_stock.tsv` (same recorder, daily, for the recorded countries only) is the reinforcement-aware loss count: date,
 country, design, wings (planes in wings), stock (in the stockpile), rate (production per day), factories, lost.
@@ -309,6 +309,18 @@ production: `lost` = production since the first read (rate per day read) minus t
 check, 11 to 15 Sep 1939: British fighters 32 against the panel's 32 (12 to 15 Sep); German 9 against 13 (the
 panel's reading times are unknown; accidents are included in both). Per design, not per region. Planes sold, lent or
 scrapped would count as lost. `air_regions.tsv` stays for where the planes are.
+
+`air_losses.tsv` (same recorder, daily, ALL countries and regions with history, ~9 s on the first read then 0.1 s) is
+the panel's own counters read from memory (`hoi4rec/airlosses.py`): date, country, region, view (days / months /
+years), column, sum, newest; a row only when one changed. Columns come 7 per channel in the order total, air battle,
+shot down by AA, accident: fighters 3-6, tactical bombers 10-13, CAS 17-20; 39 bombers disrupted; 44/45 enemy
+fighters lost (the other columns are other channels, not decoded). So fighters over a region: air battle = column 4,
+accidents = 6, total = 3 (= 4 + 5 + 6); `newest` of the days view is that day's count. Checked against the panel
+(GER 60 battle + 8 accident, ENG 251, over Southern England 5/4/1 and bombers 35 = 17+16+2) and against the save's
+`strategic_air/TAG/history/REGION` blocks (`tools/air_losses.py SAVE [TAG]` prints those for any plaintext save).
+Memory chain: holder with vtable 0x...5148 (CStrategicAir's secondary vtable, found from RTTI) country id +0x88,
+region count +0x140, region-indexed array +0x150 -> CLoopHistory (containers +0x10 days / +0x18 months / +0x20 years;
+container +0x08 pointer to slot pointers, +0x10 slot count, +0x24 ring offset) -> vector of 89 int64.
 
 `production_output.tsv` (countryrec, every country-block day; `tools/production_output.py REC` backfills from
 `country/*.gz`): date, design (handle 70 id), stock, rate (units per day = sum over the design's lines of speed /

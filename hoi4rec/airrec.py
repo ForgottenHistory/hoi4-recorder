@@ -18,6 +18,12 @@ of their wings or on no known wing (e.g. a deployment). A read covers the wings 
 read and the ids past the highest seen (a new wing), every wing in the game (~1.5 s for 250) at the first call and
 every FULL_DAYS days.
 
+air_losses.tsv (see _losses, hoi4rec/airlosses.py): the air-zone panel's loss counters read live from memory,
+  date country region view column sum newest
+view days (30-day panel) / months / years; column 3-6 fighters (total, air battle, AA, accident), 10-13 tactical
+bombers, 17-20 CAS, 39 bombers disrupted, 44 enemy fighters lost (more in tools/air_losses.py); sum = the view's
+total, newest = its latest slot (days: that day's losses).
+
 Read with bridge.write 69 ID (the wing as the game saves it: count, experience, mission={ type period active
 strategic_region }, tag, equipment, name) for every wing id from 1 to past the highest seen; the base from memory:
 the wing (bridge.object 69 ID gives it +0x10) holds its CAirWingPool at +0x28, the pool its air base handle 65:ID at
@@ -40,12 +46,13 @@ are written by install_rules() (L+0x28=[69:1,69:3]):
 import os
 import re
 
-from hoi4rec import shared
+from hoi4rec import airlosses, shared
 from hoi4bridge import country_block, send
 
 FULL_DAYS = 7
 WING, BASE = 69, 65
 STOCK_HEADER = "date\tcountry\tdesign\twings\tstock\trate\tfactories\tlost"
+LOSSES_HEADER = "date\tcountry\tregion\tview\tcolumn\tsum\tnewest"
 REGION_HEADER ="date\tcountry\tregion\tmission\twings\tplanes\teffective\tair_superiority\tlost"
 HEADER = ("date\tchange\tcountry\twing\tname\tbase\tstate\tequipment\tplanes\tmission\tregion\tperiod\texperience"
           "\twas")
@@ -139,6 +146,12 @@ class AirLog:
         self.fs = open(spath, "a", encoding="utf-8")
         if new:
             self.fs.write(STOCK_HEADER + "\n")
+        lpath = os.path.join(os.path.dirname(path), "air_losses.tsv")
+        new = not os.path.exists(lpath)
+        self.fl = open(lpath, "a", encoding="utf-8")
+        if new:
+            self.fl.write(LOSSES_HEADER + "\n")
+        self.losses = {}            # (tag, region, view, column) -> (sum, newest) last written
 
     def _bases(self, ids):
         """{wing id: air base id} of wings IDS."""
@@ -306,14 +319,38 @@ class AirLog:
                     self._stock(date, tag, now)
                 self.held[tag] = now
         self.started = True
+        if new_day:
+            self._losses(date)
         for row in rows:
             self.f.write("\t".join((date,) + row) + "\n")
         self.f.flush()
         self.fr.flush()
         self.fs.flush()
+        self.fl.flush()
         return len(rows)
+
+    def _losses(self, date):
+        """Writes air_losses.tsv rows: the panel's loss counters (hoi4rec.airlosses) of every country and region,
+        per view (days / months / years) and column: `sum` over the view's slots and `newest` (the last slot: the
+        day's, month's or year's count so far). A row only when one of them changed."""
+        try:
+            data = airlosses.read(self.proc)
+        except Exception:
+            return
+        for (cid, region), views in sorted(data.items()):
+            tag = self.names.tag(cid)
+            for view, (offset, rows) in views.items():
+                newest = rows[(offset - 1) % len(rows)]
+                for c in range(airlosses.COLUMNS):
+                    s = round(sum(r[c] for r in rows), 2)
+                    k = (tag, region, view, c)
+                    v = (s, round(newest[c], 2))
+                    if v != self.losses.get(k, (0, 0)):
+                        self.losses[k] = v
+                        self.fl.write("\t".join((date, tag, str(region), view, str(c), f"{s:g}", f"{v[1]:g}")) + "\n")
 
     def close(self):
         self.f.close()
         self.fr.close()
         self.fs.close()
+        self.fl.close()
