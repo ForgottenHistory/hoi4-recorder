@@ -19,7 +19,9 @@ read and the ids past the highest seen (a new wing), every wing in the game (~1.
 every FULL_DAYS days.
 
 air_losses.tsv (see _losses, hoi4rec/airlosses.py): the air-zone panel's loss counters read live from memory,
-  date country region view column sum newest
+  date country region view column sum newest name
+(name from airlosses.NAMES: fighters_lost_air_battle, enemy_bombers_lost_aa, ... ; the enemy_ columns are what the
+country inflicted, column +41, without accidents)
 view days (30-day panel) / months / years; column 3-6 fighters (total, air battle, AA, accident), 10-13 tactical
 bombers, 17-20 CAS, 39 bombers disrupted, 44 enemy fighters lost (more in tools/air_losses.py); sum = the view's
 total, newest = its latest slot (days: that day's losses).
@@ -52,7 +54,7 @@ from hoi4bridge import country_block, send
 FULL_DAYS = 7
 WING, BASE = 69, 65
 STOCK_HEADER = "date\tcountry\tdesign\twings\tstock\trate\tfactories\tlost"
-LOSSES_HEADER = "date\tcountry\tregion\tview\tcolumn\tsum\tnewest"
+LOSSES_HEADER = "date\tcountry\tregion\tview\tcolumn\tsum\tnewest\tname"
 REGION_HEADER ="date\tcountry\tregion\tmission\twings\tplanes\teffective\tair_superiority\tlost"
 HEADER = ("date\tchange\tcountry\twing\tname\tbase\tstate\tequipment\tplanes\tmission\tregion\tperiod\texperience"
           "\twas")
@@ -347,7 +349,8 @@ class AirLog:
                     v = (s, round(newest[c], 2))
                     if v != self.losses.get(k, (0, 0)):
                         self.losses[k] = v
-                        self.fl.write("\t".join((date, tag, str(region), view, str(c), f"{s:g}", f"{v[1]:g}")) + "\n")
+                        self.fl.write("\t".join((date, tag, str(region), view, str(c), f"{s:g}", f"{v[1]:g}",
+                                                 airlosses.NAMES.get(c, ""))) + "\n")
 
     def close(self):
         self.f.close()

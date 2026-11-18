@@ -312,9 +312,13 @@ scrapped would count as lost. `air_regions.tsv` stays for where the planes are.
 
 `air_losses.tsv` (same recorder, daily, ALL countries and regions with history, ~9 s on the first read then 0.1 s) is
 the panel's own counters read from memory (`hoi4rec/airlosses.py`): date, country, region, view (days / months /
-years), column, sum, newest; a row only when one changed. Columns come 7 per channel in the order total, air battle,
+years), column, sum, newest, name; a row only when one changed. Columns come 7 per channel in the order total, air battle,
 shot down by AA, accident: fighters 3-6, tactical bombers 10-13, CAS 17-20; 39 bombers disrupted; 44/45 enemy
-fighters lost (the other columns are other channels, not decoded). So fighters over a region: air battle = column 4,
+fighters lost (the other columns are other channels, not decoded). The enemy block mirrors ours at +41 and is
+what the country inflicted: GER c41 = ENG c0 (buildings bombed), GER c80 = ENG c39 (bombers disrupted), c44 / c51 /
+c58 = enemy fighters / bombers / CAS lost (total, air battle, AA; no accident column, e.g. ENG 33 = 17 + 16). The
+last column `name` (`airlosses.NAMES`) says which. Unseen channels (transports, trains, trucks, railway guns,
+missiles; always 0 so far) sit in the gaps and are unnamed; decode them the same way when a game makes them nonzero. So fighters over a region: air battle = column 4,
 accidents = 6, total = 3 (= 4 + 5 + 6); `newest` of the days view is that day's count. Checked against the panel
 (GER 60 battle + 8 accident, ENG 251, over Southern England 5/4/1 and bombers 35 = 17+16+2) and against the save's
 `strategic_air/TAG/history/REGION` blocks (`tools/air_losses.py SAVE [TAG]` prints those for any plaintext save).

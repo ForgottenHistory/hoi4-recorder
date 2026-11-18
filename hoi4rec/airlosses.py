@@ -17,6 +17,25 @@ import struct
 
 COLUMNS = 89
 SCALE = 100000.0
+ENEMY = 41      # the enemy block mirrors ours at +41 (GER c41 = ENG c0, GER c80 = ENG c39)
+
+
+def _names():
+    """Column -> name. Ours: 0-2 buildings / troops / ships bombed, then 7 columns per loss channel (total, air battle,
+    shot down by AA, accident; the rest unseen): fighters 3, bombers 10, CAS 17; 39 bombers disrupted. The enemy
+    block (+41) is what WE did to them: buildings / troops bombed, ships sunk, fighters 44, bombers 51, CAS 58 lost
+    (total, air battle, AA: no accidents), 80 their bombers disrupted. Seen only for non-zero values; the unseen
+    channels (transports, trains, trucks, railway guns, missiles) are in the gaps and are not named."""
+    out = {0: "buildings_bombed", 1: "troops_bombed", 2: "ships_bombed", 39: "bombers_disrupted"}
+    for base, ch in ((3, "fighters"), (10, "bombers"), (17, "cas")):
+        for k, r in enumerate(("total", "air_battle", "aa", "accident")):
+            out[base + k] = f"{ch}_lost_{r}"
+    for c in list(out):
+        out[c + ENEMY] = "enemy_" + out[c]
+    return out
+
+
+NAMES = _names()
 VIEWS = (("days", 0x10), ("months", 0x18), ("years", 0x20))
 
 
