@@ -1,8 +1,8 @@
 # hoi4-recorder
 
-Records everything you and the AI do in Hearts of Iron IV, and turns it into an after-action report.
-Split out of [hoi4-custom-ai](../hoi4-custom-ai); it reads the running game through
-[hoi4-bridge](https://github.com/ForgottenHistory/hoi4-bridge) (singleplayer, Windows, Steam, tested on 1.19.4).
+Records everything you and the AI do in Hearts of Iron IV
+Split out of [hoi4-custom-ai](https://github.com/ForgottenHistory/hoi4-custom-ai); it reads the running game through
+[hoi4-bridge](https://github.com/ForgottenHistory/hoi4-bridge) (singleplayer, Windows, Steam, tested on 1.19.4)
 
 - `hoi4rec/` the library: one `*rec.py` recorder per kind of data (country, battles, politics, research, production,
   diplomacy, navy, air, intelligence, ...), plus the game-reading helpers they share (`memory`, `pdx`, `gamefiles`,
