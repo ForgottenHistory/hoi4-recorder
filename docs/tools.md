@@ -302,6 +302,18 @@ unreinforced ENG came out close). The panel's own loss counters (fighters/bomber
 30 / Months 12 / Years 5 history views) were searched for in memory as int and float arrays (CAirRegionCombatData
 holds per-wing pairs, not stats) and NOT found, so they are not recorded.
 
+`air_stock.tsv` (same recorder, daily, for the recorded countries only) is the reinforcement-aware loss count: date,
+country, design, wings (planes in wings), stock (in the stockpile), rate (production per day), factories, lost.
+Reinforcement only moves planes from stock to wings, so for a design wings + stock falls only by losses and rises by
+production: `lost` = production since the first read (rate per day read) minus the change in wings + stock. Live
+check, 11 to 15 Sep 1939: British fighters 32 against the panel's 32 (12 to 15 Sep); German 9 against 13 (the
+panel's reading times are unknown; accidents are included in both). Per design, not per region. Planes sold, lent or
+scrapped would count as lost. `air_regions.tsv` stays for where the planes are.
+
+`production_output.tsv` (countryrec, every country-block day; `tools/production_output.py REC` backfills from
+`country/*.gz`): date, design (handle 70 id), stock, rate (units per day = sum over the design's lines of speed /
+cost), factories, lines; a row only when one changed. Covers all equipment, not just planes. Names: equipment_designs.tsv.
+
 Navies (`hoi4ai/navalrec.py`): `naval.tsv` gets each country's task forces at its first read and then each change:
 date, change (`start`, `new`, `changed`, `removed`), country, task_force (`51:ID` for the starting ones, `61:ID` for ones made by splitting or balancing), name, fleet (handle 61 id and
 name), ships (count per ship type, e.g. `destroyer:4,heavy_cruiser:2`), mission (`hold`, `patrol`, `strike_force`,

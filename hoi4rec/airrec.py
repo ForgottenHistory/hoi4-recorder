@@ -1,6 +1,7 @@
 """Air wings: each country's air wings, where they are based and the mission they fly.
 
-AirLog(path, names, tags, others).step(date, lines) writes air_regions.tsv (see _regions) and, to air.tsv:
+AirLog(path, names, tags, others).step(date, lines) writes air_regions.tsv (see _regions), air_stock.tsv (see _stock:
+daily, per design: planes in wings, in the stockpile, production rate) and, to air.tsv:
   date  change  country  wing  name  base  state  equipment  planes  mission  region  period  experience  was
 wing the wing's id (handle 69), base the air base it sits at (handle 65 id) and state that base's state, equipment
 the plane design (handle 70 id), planes how many it has, mission none / air_superiority / cas / interception /
@@ -40,11 +41,12 @@ import os
 import re
 
 from hoi4rec import shared
-from hoi4bridge import send
+from hoi4bridge import country_block, send
 
 FULL_DAYS = 7
 WING, BASE = 69, 65
-REGION_HEADER = "date\tcountry\tregion\tmission\twings\tplanes\teffective\tair_superiority\tlost"
+STOCK_HEADER = "date\tcountry\tdesign\twings\tstock\trate\tfactories\tlost"
+REGION_HEADER ="date\tcountry\tregion\tmission\twings\tplanes\teffective\tair_superiority\tlost"
 HEADER = ("date\tchange\tcountry\twing\tname\tbase\tstate\tequipment\tplanes\tmission\tregion\tperiod\texperience"
           "\twas")
 FIELDS = ("name", "base", "state", "equipment", "planes", "mission", "region", "period", "experience")
@@ -131,6 +133,12 @@ class AirLog:
         if new:
             self.fr.write(REGION_HEADER + "\n")
         self.regions = {}           # tag -> {(region, mission): (wings, planes, effective, air_superiority)}
+        self.base = {}              # (tag, design) -> [planes at the first read, production since, last rate]
+        spath = os.path.join(os.path.dirname(path), "air_stock.tsv")
+        new = not os.path.exists(spath)
+        self.fs = open(spath, "a", encoding="utf-8")
+        if new:
+            self.fs.write(STOCK_HEADER + "\n")
 
     def _bases(self, ids):
         """{wing id: air base id} of wings IDS."""
@@ -221,6 +229,39 @@ class AirLog:
         self.regions[tag] = {k: tuple(g) for k, g in groups.items()}
         return n
 
+    def _stock(self, date, tag, now):
+        """Writes air_stock.tsv rows for TAG: per aircraft design the planes in wings, in the stockpile, and the
+        production rate (sum over its lines of speed / cost, units per day on the game's own scale) with the
+        factories on it. Only designs a wing uses or the stockpile holds. Reinforcement moves planes from the
+        stockpile into wings, so wings + stock falls only by losses (and rises by production). `lost` = planes lost
+        since this recorder's first read of the design = production since (rate per day read) - (change in wings +
+        stock). Checked live: British fighters 32 against the panel's 32 over 3 days; German 9 against 13 (reading
+        times differ). Planes sold, lent or scrapped would count as lost too."""
+        text = country_block(tag)
+        stock = {}
+        m = re.search(r"\n\t*equipments=\{((?:\s*equipment=\{\s*id=\{ id=\d+ type=70 \}\s*amount=\d+\s*\})+)", text)
+        for i, a in re.findall(r"id=(\d+) type=70 \}\s*amount=(\d+)", m.group(1) if m else ""):
+            stock[i] = int(a)
+        rate, fact = {}, {}
+        for sp, cost, i in re.findall(
+                r"speed=([\d.]+)\s*cost=([\d.]+)\s*requested_factories=\d+\s*equipment_variant_index=\{ id=(\d+) type=70 \}",
+                text):
+            rate[i] = rate.get(i, 0.0) + (float(sp) / float(cost) if float(cost) else 0.0)
+        for fa, i in re.findall(r"active_factories=(\d+)[^{}]*?equipment_variant_index=\{ id=(\d+) type=70 \}", text):
+            fact[i] = fact.get(i, 0) + int(fa)
+        wings = {}
+        for v in now.values():
+            if v["equipment"]:
+                wings[v["equipment"]] = wings.get(v["equipment"], 0) + int(v["planes"] or 0)
+        for i in sorted(set(wings) | set(stock), key=int):
+            total = wings.get(i, 0) + stock.get(i, 0)
+            base, made, last = self.base.setdefault((tag, i), [total, -rate.get(i, 0.0), rate.get(i, 0.0)])
+            made += last                    # a day of production at the rate of the last read
+            self.base[(tag, i)] = [base, made, rate.get(i, 0.0)]
+            lost = round(made - (total - base), 1)
+            self.fs.write("\t".join((date, tag, i, str(wings.get(i, 0)), str(stock.get(i, 0)),
+                                     f"{rate.get(i, 0.0):.3f}", str(fact.get(i, 0)), str(lost))) + "\n")
+
     def step(self, date, lines=()):
         """DATE as for ProductionLog.step. Returns the rows written."""
         day = date.split(",", 1)[1] if "," in date else date.split(" ", 1)[0]
@@ -261,14 +302,18 @@ class AirLog:
                         rows.append(("removed", tag, str(i)) + tuple(v[f] for f in FIELDS) + ("",))
                 if last is not None or not self.started:
                     self._regions(date, tag, now, last)
+                if new_day and tag in self.tags:
+                    self._stock(date, tag, now)
                 self.held[tag] = now
         self.started = True
         for row in rows:
             self.f.write("\t".join((date,) + row) + "\n")
         self.f.flush()
         self.fr.flush()
+        self.fs.flush()
         return len(rows)
 
     def close(self):
         self.f.close()
         self.fr.close()
+        self.fs.close()

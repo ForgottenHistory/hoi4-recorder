@@ -9,6 +9,8 @@ CountryLog(folder, tag).step(day) writes, once per day:
   states.tsv          owner, controller and cores (tags, space-separated) of every state of every country: date, state,
                       owner, controller, cores. The first day lists every state, after that a row only where one changed
   control.tsv         who controls each province (live.Provinces): date, province, controller; changes only after day one
+  production_output.tsv  per equipment design (handle 70 id) the stockpile, units per day (sum of speed / cost over its
+                      lines), factories and lines, a row only when one changed (output_rows; tools/production_output.py backfills)
   war_stats.tsv       casualties and war-score parts of each war the country is in (tools/war_stats.py backfills): WAR_COLS
   battles.tsv         every land combat in the world each day: province, then per side (a and b: NOT attacker and defender, Switzerland is a at one front and b at another) the
                       divisions' owner tags, count, mean organisation and strength in percent (_battles)
@@ -100,6 +102,29 @@ def war_rows(block):
     return rows
 
 
+OUTPUT_COLS = ["design", "stock", "rate", "factories", "lines"]
+
+
+def output_rows(block):
+    """[[design id, stockpile, rate, factories, lines]] per equipment design the country holds in stock or builds, from
+    its block: stock = the stockpile (`equipments={ equipment={ id={ id=N type=70 } amount=N } }`), rate = units per day
+    = the sum over the design's lines of speed / cost (checked on aircraft: a design's stock rose 44 in 3.96 days at a
+    rate of 10.85), factories = active factories on them, lines = how many lines."""
+    stock = {}
+    m = re.search(r"\n\t*equipments=\{((?:\s*equipment=\{\s*id=\{ id=\d+ type=70 \}\s*amount=\d+\s*\})+)", block)
+    for i, a in re.findall(r"id=(\d+) type=70 \}\s*amount=(\d+)", m.group(1) if m else ""):
+        stock[i] = int(a)
+    rate, fact, lines = {}, {}, {}
+    for fa, sp, cost, i in re.findall(
+            r"active_factories=(\d+)[^{}]*?speed=([\d.]+)\s*cost=([\d.]+)\s*requested_factories=\d+\s*"
+            r"equipment_variant_index=\{ id=(\d+) type=70 \}", block):
+        rate[i] = rate.get(i, 0.0) + (float(sp) / float(cost) if float(cost) else 0.0)
+        fact[i] = fact.get(i, 0) + int(fa)
+        lines[i] = lines.get(i, 0) + 1
+    return [[i, str(stock.get(i, 0)), f"{rate.get(i, 0.0):.3f}", str(fact.get(i, 0)), str(lines.get(i, 0))]
+            for i in sorted(set(stock) | set(rate), key=int)]
+
+
 def intel(tag):
     """[(target tag, civilian, army, navy, air)] for every other existing country (value texts)."""
     lines = query(f'every_country = {{ limit = {{ exists = yes NOT = {{ tag = {tag} }} }} {tag} = {{ log = "[PREV.GetTag]'
@@ -144,6 +169,8 @@ class CountryLog:
         self.equipment = set()
         self.f_states = self._open("states.tsv", "date\tstate\towner\tcontroller\tcores")
         self.f_control = self._open("control.tsv", "date\tprovince\tcontroller")
+        self.f_out = self._open("production_output.tsv", "date\t" + "\t".join(OUTPUT_COLS))
+        self.output = {}                    # design id -> last written row, so only changes are written
         self.states, self.control = {}, {}      # last written, so a restart carries on instead of repeating everything
         with open(os.path.join(folder, "states.tsv"), encoding="utf-8") as h:
             for line in list(h)[1:]:
@@ -182,12 +209,16 @@ class CountryLog:
                 self.f_states.write(f"{day}\t{sid}\t{v[0]}\t{v[1]}\t{v[2]}\n")
                 self.states[sid] = v
         self._control(day)
+        for row in output_rows(block):
+            if self.output.get(row[0]) != row:
+                self.output[row[0]] = row
+                self.f_out.write(day + "\t" + "\t".join(row) + "\n")
         new =[i for i in handles(block, 70) if i not in self.equipment]
         for eid, a in _addresses(70, new).items():
             v = self.reader.variant(a)
             self.f_eq.write(f"{eid}\t{v.name}\t{v.type}\t{','.join(v.modules)}\n")
             self.equipment.add(eid)
-        for f in (self.f_num, self.f_eq, self.f_intel, self.f_states, self.f_control):
+        for f in (self.f_num, self.f_eq, self.f_intel, self.f_states, self.f_control, self.f_out):
             f.flush()
         return True
 
@@ -206,7 +237,7 @@ class CountryLog:
                 self.f_control.write(f"{day}\t{p}\t{self.control[p]}\n")
 
     def close(self):
-        for f in (self.f_num, self.f_eq, self.f_intel, self.f_states, self.f_control):
+        for f in (self.f_num, self.f_eq, self.f_intel, self.f_states, self.f_control, self.f_out):
             f.close()
 
 
