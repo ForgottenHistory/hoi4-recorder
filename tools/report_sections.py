@@ -68,7 +68,10 @@ def done_vs(value, nm):
 
 
 def sections(rec, tag, d0, d1, wars):
-    from report import LOC, chart, day, esc, nm, pretty, table
+    from report import LOC, chart, day, equip_name, esc, nm, pretty, table
+
+    def equip_label(t):
+        return equip_name(re.sub(r"_(\d+|airframe_\d+)$", "", t))
     out = []
 
     # occupation: each row of the resistance attack log is the newest attack at the time of the read
@@ -347,6 +350,112 @@ def sections(rec, tag, d0, d1, wars):
                            [[r[ri["region"]], r[ri["mission"]].replace("_", " "), r[ri["wings"]], r[ri["planes"]], r[ri["effective"]],
                              r[ri["air_superiority"]], r[ri["lost"]]] for r in rows]))
         out.append(("Air force", html))
+
+    # air losses: the air-zone panel counters (air_losses.tsv, live from memory)
+    lh, lo = rows_of(rec, "air_losses", country=tag, view="days")
+    if lo:
+        li = {c: i for i, c in enumerate(lh)}
+        per_day = {}        # (channel, reason) -> {date: newest}; a day without a row had the same (sum, newest) as before
+        region_sum = {}     # region -> {name: latest 30-day sum}
+        for r in lo:
+            d = day(r[li["date"]])
+            if d is None:
+                continue
+            name = r[li["name"]]
+            if name.startswith("enemy_") or "_lost_" not in name:
+                if name == "bombers_disrupted":
+                    region_sum.setdefault(r[li["region"]], {})[name] = float(r[li["sum"]])
+                continue
+            ch, _, reason = name.partition("_lost_")
+            region_sum.setdefault(r[li["region"]], {})[name] = float(r[li["sum"]])
+            if reason != "total":
+                per_day.setdefault((ch, reason), Counter())[d] += float(r[li["newest"]])
+        LABEL = {"fighters": "Fighters", "bombers": "Bombers", "cas": "CAS"}
+        RLABEL = {"air_battle": "air battle", "aa": "shot down by AA", "accident": "accident"}
+        html = ("<p>The air-zone panel's own loss counters (Days view, 30-day ring), read live from memory (air_losses.tsv). "
+                "A row is written only when a region's counter changes, so a day with no row counts as no losses (a lower bound if two "
+                "days lose exactly the same).</p>")
+        months = {}
+        for (ch, reason), c in per_day.items():
+            for d, v in c.items():
+                months.setdefault((ch, reason), Counter())[(d.year, d.month)] += v
+        for ch in ("fighters", "bombers", "cas"):
+            series = [(RLABEL[rs], sorted((datetime.date(y, m, 15), v) for (y, m), v in months[(ch, rs)].items()))
+                      for rs in ("air_battle", "aa", "accident") if (ch, rs) in months]
+            if series:
+                html += f"<h3>{LABEL[ch]} lost per month, by cause</h3>" + chart(series, d0, d1, wars, stacked=True, bars=True, height=170)
+        # per region at the latest read
+        rows = []
+        for reg, v in region_sum.items():
+            tot = {ch: v.get(ch + "_lost_total", 0) for ch in ("fighters", "bombers", "cas")}
+            allx = sum(tot.values())
+            if allx or v.get("bombers_disrupted"):
+                aa = sum(v.get(ch + "_lost_aa", 0) for ch in tot)
+                rows.append((reg, int(tot["fighters"]), int(tot["bombers"]), int(tot["cas"]), int(allx),
+                             f"{100 * aa / allx:.0f}%" if allx else "", f"{v.get('bombers_disrupted', 0):g}"))
+        rows.sort(key=lambda r: -r[4])
+        if rows:
+            html += ("<h3>Where the planes were lost (latest 30-day counters per air region)</h3>" +
+                     table(["region id", "fighters", "bombers", "CAS", "total", "share by AA", "bombers disrupted"], rows[:20]))
+        # exchange: what we inflicted on the enemy (the +41 mirror columns), latest per region
+        lh2, lo2 = rows_of(rec, "air_losses", country=tag, view="days")
+        ex = {}
+        for r in lo2:
+            n = r[li["name"]]
+            if n in ("enemy_fighters_lost_total", "enemy_bombers_lost_total", "enemy_cas_lost_total", "fighters_lost_total",
+                     "bombers_lost_total", "cas_lost_total"):
+                ex.setdefault(r[li["region"]], {})[n] = float(r[li["sum"]])
+        rows = []
+        for reg, v in ex.items():
+            ours = sum(v.get(k, 0) for k in ("fighters_lost_total", "bombers_lost_total", "cas_lost_total"))
+            theirs = sum(v.get(k, 0) for k in ("enemy_fighters_lost_total", "enemy_bombers_lost_total", "enemy_cas_lost_total"))
+            if ours or theirs:
+                rows.append((reg, int(ours), int(theirs), f"{theirs / ours:.2f}" if ours else "-"))
+        rows.sort(key=lambda r: -(r[1] + r[2]))
+        if rows:
+            html += ("<h3>Loss exchange per air region (latest 30 days)</h3><p>Ours against the enemy planes we shot down (the panel's "
+                     "Enemy ... lost counters). A ratio above 1 means we killed more than we lost.</p>" +
+                     table(["region id", "our losses", "enemy losses", "enemy per ours"], rows[:20]))
+        out.append(("Air losses", html))
+
+    # production output: units made per month (production_output.tsv: stock, units/day and factories per design)
+    ph, po = rows_of(rec, "production_output")
+    if po:
+        pi = {c: i for i, c in enumerate(ph)}
+        dh, dz = rows_of(rec, "equipment_designs", owner=tag)
+        di = {c: i for i, c in enumerate(dh)} if dh else {}
+        label = {}
+        for r in dz or []:
+            t = r[di["type"]]
+            label[r[di["id"]]] = r[di["name"]] or equip_label(t)
+        # rate is valid until the design's next row; sum rate per month
+        last, made, tot = {}, {}, Counter()
+        rows_sorted = [(day(r[pi["date"]]), r[pi["design"]], float(r[pi["rate"]] or 0)) for r in po]
+        rows_sorted = [x for x in rows_sorted if x[0]]
+        for (dt, des, rate) in rows_sorted:
+            if des in last:
+                d0_, r0 = last[des]
+                for k in range((dt - d0_).days):
+                    dd = d0_ + datetime.timedelta(days=k)
+                    made.setdefault(des, Counter())[(dd.year, dd.month)] += r0
+                    tot[des] += r0
+            last[des] = (dt, rate)
+        if made:
+            by_label, tot_l = {}, Counter()     # designs with the same name (one per version) are one series
+            for des, c in made.items():
+                if label.get(des):
+                    for k, v in c.items():
+                        by_label.setdefault(label[des], Counter())[k] += v
+                    tot_l[label[des]] += tot[des]
+            ranked = [n for n, _ in tot_l.most_common()]
+            series = [(n, sorted((datetime.date(y, m, 15), v) for (y, m), v in by_label[n].items())) for n in ranked[:8]]
+            html = ("<p>Equipment made per month, estimated from the daily production rate (production_output.tsv: units/day of every "
+                    "design the country's lines make, read each day it changed; the rate holds until the next row). Designs with the same name "
+                    "(one per version) are added together; the eight made most are shown.</p>" +
+                    chart(series, d0, d1, wars, stacked=True, bars=True))
+            html += ("<h3>Most made over the recording</h3>" +
+                     table(["design", "units made (est.)"], [(esc(n), f"{tot_l[n]:,.0f}") for n in ranked[:15]]))
+            out.append(("Production output", html))
 
     h, gen = rows_of(rec, "generals", country=tag)
     if gen:
