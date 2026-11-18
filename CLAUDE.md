@@ -1,7 +1,8 @@
 # hoi4-recorder
 
 Recorders, shared game-reading helpers and the after-action report. Workspace-level notes (what every recording file is,
-which tool makes it) are in `../CLAUDE.md`; per-tool detail is in `docs/tools.md`, memory offsets in `docs/game-layouts.md`.
+which tool makes it) are in `../CLAUDE.md`; per-tool detail is in `docs/tools.md`, memory offsets in `docs/game-layouts.md`, how to find a hidden game value in memory in
+`docs/finding-things-in-memory.md` (read it before any memory scan).
 Grep `hoi4rec/`, `tools/` and `docs/` before saying something isn't recorded.
 
 ## Layout

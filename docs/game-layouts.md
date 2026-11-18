@@ -29,3 +29,12 @@ tools for finding new ones.
   - `CState`: id +0x58 (agrees with the files for all land provinces), owner +0xc8, controller +0xcc.
 - **`CMoveCommand`:** embeds a `CUnitMoveAction` at +0x28: division handle +0x38, province path (ids) +0x40 /
   count +0x4c. Player moves use flags `1 2 1 0 0 0 0`.
+- **Stat history rings (`CLoopHistory`, air-zone panel counters; `hoi4rec/airlosses.py`):**
+  - holder (secondary-vtable `CStrategicAir`, one per country): country id +0x88, region count +0x140, array indexed
+    by strategic region id +0x150 (entries 0 or `CLoopHistory*`).
+  - `CLoopHistory`: Days container +0x10 (30 slots), Months +0x18 (12), Years +0x20.
+  - `CLoopHistoryContainer`: pointer to slot pointers +0x08, slot count +0x10, ring offset +0x24 (next slot to
+    write, newest = offset-1; the save's `offset=`). Slot = `{ptr to 89 int64, dword count}`; values are fixed
+    point x100000. Columns: 7 per channel (total, air battle, AA, accident): fighters 3-6, tactical bombers 10-13,
+    CAS 17-20; 39 disrupted; 44/45 enemy fighters lost. Other history rings (logistics 81 columns, country_reports
+    150) use the same container type. How it was found: `docs/finding-things-in-memory.md`.
